@@ -1,6 +1,6 @@
 {
   "name": "@languaojs/vanilladatagrid",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A zero-dependency, single-file JavaScript data grid. Fully responsive, lightweight, accessible, and framework-free.",
   "main": "./src/datagrid.js",
   "browser": "./src/datagrid.js",
