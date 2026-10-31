@@ -23,21 +23,21 @@ A zero-dependency, single-file JavaScript data grid. Fully responsive, lightweig
 Install from npm:
 
 ```sh
-npm install vanilladatagrid
+npm install @languaojs/vanilladatagrid
 ```
 
 Then reference the published files from your page:
 
 ```html
-<link rel="stylesheet" href="./node_modules/vanilladatagrid/src/datagrid.css">
-<script src="./node_modules/vanilladatagrid/src/datagrid.js"></script>
+<link rel="stylesheet" href="./node_modules/@languaojs/vanilladatagrid/src/datagrid.css">
+<script src="./node_modules/@languaojs/vanilladatagrid/src/datagrid.js"></script>
 ```
 
 Or use the versioned files from the unpkg CDN:
 
 ```html
-<link rel="stylesheet" href="https://unpkg.com/vanilladatagrid/src/datagrid.css">
-<script src="https://unpkg.com/vanilladatagrid/src/datagrid.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@languaojs/vanilladatagrid/src/datagrid.css">
+<script src="https://unpkg.com/@languaojs/vanilladatagrid/src/datagrid.js"></script>
 ```
 
 `datagrid.js` is a classic browser script, not a CommonJS or ES module. It assigns `globalThis.VanillaDataGrid` (along with a deprecated `VanillaDataTable` alias). Do not load it with `type="module"`; use a regular `<script>` tag.
