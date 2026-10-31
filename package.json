@@ -1,0 +1,47 @@
+{
+  "name": "vanilladatagrid",
+  "version": "1.0.0",
+  "description": "A zero-dependency, single-file JavaScript data grid. Fully responsive, lightweight, accessible, and framework-free.",
+  "main": "./src/datagrid.js",
+  "browser": "./src/datagrid.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/datagrid.js",
+      "require": "./src/datagrid.js"
+    },
+    "./css": "./src/datagrid.css"
+  },
+  "files": [
+    "src/datagrid.js",
+    "src/datagrid.css",
+    "README.md"
+  ],
+  "sideEffects": [
+    "./src/datagrid.js",
+    "./src/datagrid.css"
+  ],
+  "keywords": [
+    "datatable",
+    "datagrid",
+    "table",
+    "grid",
+    "sortable",
+    "pagination",
+    "zero-dependency",
+    "vanilla-js"
+  ],
+  "author": "Zainurrahman <languaojs@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/languaojs/vanilladatagrid.git"
+  },
+  "bugs": {
+    "url": "https://github.com/languaojs/vanilladatagrid/issues"
+  },
+  "homepage": "https://github.com/languaojs/vanilladatagrid#readme"
+}

@@ -1,0 +1,128 @@
+.v-dg-wrapper {
+  --vdg-border: #d1d5db;
+  --vdg-accent: #007bff;
+  --vdg-muted: #6b7280;
+  --vdg-bg: #fff;
+  --vdg-radius: 4px;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  box-sizing: border-box;
+}
+.v-dg-wrapper *,
+.v-dg-wrapper *::before,
+.v-dg-wrapper *::after { box-sizing: border-box; }
+
+.v-dg-wrapper :focus-visible {
+  outline: 2px solid var(--vdg-accent);
+  outline-offset: 2px;
+}
+
+/* Top controls */
+.v-dg-controls { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.v-dg-left-controls, .v-dg-right-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.v-dg-input {
+  padding: 6px 10px;
+  width: 100%;
+  max-width: 240px;
+  border: 1px solid var(--vdg-border);
+  border-radius: var(--vdg-radius);
+  background: var(--vdg-bg);
+  color: inherit;
+  font: inherit;
+}
+.v-dg-input:focus-visible { border-color: var(--vdg-accent); }
+
+/* Buttons */
+.v-dg-btn {
+  padding: 6px 12px;
+  background: var(--vdg-bg);
+  color: inherit;
+  border: 1px solid var(--vdg-border);
+  border-radius: var(--vdg-radius);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.v-dg-btn:hover { background: #f8f9fa; }
+.v-dg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.v-dg-export-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Column dropdown */
+.v-dg-dropdown { position: relative; display: inline-block; }
+.v-dg-dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 170px;
+  padding: 8px;
+  background: var(--vdg-bg);
+  border: 1px solid var(--vdg-border);
+  border-radius: var(--vdg-radius);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+  text-align: left;
+}
+.v-dg-dropdown-menu.v-dg-show { display: block; }
+.v-dg-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.v-dg-dropdown-item:hover { background: #f3f4f6; }
+.v-dg-dropdown-item input { margin: 0; accent-color: var(--vdg-accent); }
+
+/* Table */
+.v-dg-table th { user-select: none; position: relative; }
+.v-dg-table th.v-dg-sortable { cursor: pointer; }
+.v-dg-table th.v-dg-sortable:hover { background-color: rgba(0, 0, 0, 0.03); }
+.v-dg-table th[aria-sort="ascending"]::after { content: " \25B2"; font-size: 10px; color: var(--vdg-muted); }
+.v-dg-table th[aria-sort="descending"]::after { content: " \25BC"; font-size: 10px; color: var(--vdg-muted); }
+.v-dg-table th.v-dg-hidden,
+.v-dg-table td.v-dg-hidden { display: none; }
+
+/* Bottom controls */
+.v-dg-bottom { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.v-dg-info { color: var(--vdg-muted); font-size: 13px; }
+.v-dg-info.v-dg-info-error { color: #b91c1c; }
+.v-dg-pagination { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.v-dg-pagination button {
+  padding: 5px 10px;
+  background: var(--vdg-bg);
+  color: inherit;
+  border: 1px solid var(--vdg-border);
+  border-radius: var(--vdg-radius);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.v-dg-pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+.v-dg-pagination button[aria-current="page"] { background: var(--vdg-accent); border-color: var(--vdg-accent); color: #fff; }
+.v-dg-ellipsis { padding: 0 2px; color: var(--vdg-muted); }
+
+/* Loading and empty states */
+.v-dg-wrapper.v-dg-loading .v-dg-table { opacity: 0.55; transition: opacity 0.15s ease; }
+.v-dg-wrapper.v-dg-loading .v-dg-table:focus-within { opacity: 0.8; }
+.v-dg-state { padding: 18px; text-align: center; color: var(--vdg-muted); }
+.v-dg-state .v-dg-btn { margin-left: 8px; }
+.v-dg-error-detail { margin-top: 4px; font-size: 12px; color: #b91c1c; }
+
+/* Screen-reader only */
+.v-dg-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VanillaDataGrid Tests</title>
+  <link rel="stylesheet" href="../src/datagrid.css">
+  <style>
+    body { margin: 2rem auto; max-width: 900px; padding: 0 1rem; font-family: system-ui, sans-serif; color: #1f2937; }
+    h1 { font-size: 1.35rem; }
+    #summary { font-weight: 600; }
+    #results { padding-left: 1.2rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
+    #results li { margin: 3px 0; }
+    #results li.ok { color: #166534; }
+    #results li.fail { color: #b91c1c; }
+    #fixtures { display: none; }
+  </style>
+</head>
+<body>
+  <h1>VanillaDataGrid tests</h1>
+  <p id="summary">Running…</p>
+  <ul id="results"></ul>
+  <div id="fixtures"></div>
+
+  <script src="../src/datagrid.js"></script>
+  <script>
+    (async function () {
+      'use strict';
+
+      const internals = VanillaDataGrid.__internals;
+      const pageWindow = internals.pageWindow;
+      const paginate = internals.paginate;
+      const filterRows = internals.filterRows;
+      const sortRows = internals.sortRows;
+      const createCSV = internals.createCSV;
+      const createJSON = internals.createJSON;
+      const sanitizeFilename = internals.sanitizeFilename;
+      const normalizeCell = internals.normalizeCell;
+      const uniqueKeys = internals.uniqueKeys;
+
+      const fixtures = document.getElementById('fixtures');
+      const list = document.getElementById('results');
+      const summary = document.getElementById('summary');
+      let passed = 0;
+      let failed = 0;
+
+      function record(name, ok, error) {
+        const item = document.createElement('li');
+        item.className = ok ? 'ok' : 'fail';
+        item.textContent = (ok ? 'PASS  ' : 'FAIL  ') + name + (ok ? '' : ' — ' + (error && error.message));
+        list.appendChild(item);
+        return ok;
+      }
+
+      async function check(name, fn) {
+        try {
+          await fn();
+          passed += 1;
+          record(name, true);
+        } catch (error) {
+          failed += 1;
+          record(name, false, error);
+          console.error(name, error);
+        }
+      }
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message || 'Assertion failed');
+      }
+
+      function eq(actual, expected, message) {
+        const a = JSON.stringify(actual);
+        const b = JSON.stringify(expected);
+        if (a !== b) throw new Error((message || 'Expected equality') + ': ' + a + ' !== ' + b);
+      }
+
+      function tick(ms) {
+        return new Promise(function (resolve) { setTimeout(resolve, ms || 0); });
+      }
+
+      function cell(value) {
+        return { html: String(value), text: String(value), className: '' };
+      }
+
+      function row() {
+        return Array.prototype.map.call(arguments, cell);
+      }
+
+      function firstColumn(rows) {
+        return rows.map(function (item) { return item[0].text; });
+      }
+
+      function makeTable(head, body) {
+        const table = document.createElement('table');
+        table.innerHTML = '<thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody>';
+        fixtures.appendChild(table);
+        return table;
+      }
+
+      function dispose(table, grid) {
+        if (grid && !grid.destroyed) grid.destroy();
+        if (table && table.parentNode) table.remove();
+      }
+
+      async function openGrid(head, body, options) {
+        const table = makeTable(head, body);
+        const grid = new VanillaDataGrid(table, Object.assign({ rowsPerPage: 2 }, options || {}));
+        await grid.ready;
+        return { table: table, grid: grid, wrapper: table.closest('.v-dg-wrapper') };
+      }
+
+      const HEAD =
+        '<th data-field="name" data-sortable="true">Name</th>' +
+        '<th data-field="role" data-sortable="true">Role</th>' +
+        '<th data-field="score" data-sortable="true" data-type="number">Score</th>';
+
+      const BODY =
+        '<tr><td>Grace</td><td>Admiral</td><td>87</td></tr>' +
+        '<tr><td>Ada</td><td>Engineer</td><td>98</td></tr>' +
+        '<tr><td>Alan</td><td>Mathematician</td><td>75</td></tr>';
+
+      /* -------------------------------------------------------- pure helpers */
+
+      await check('pageWindow keeps edges and neighbours', function () {
+        eq(pageWindow(5, 20), [1, '\u2026', 4, 5, 6, '\u2026', 20]);
+      });
+
+      await check('pageWindow handles one page', function () {
+        eq(pageWindow(1, 1), [1]);
+      });
+
+      await check('pageWindow handles the start and end', function () {
+        eq(pageWindow(1, 20), [1, 2, '\u2026', 20]);
+        eq(pageWindow(20, 20), [1, '\u2026', 19, 20]);
+      });
+
+      await check('paginate clamps out-of-range pages', function () {
+        const rows = [row('0'), row('1'), row('2'), row('3'), row('4')];
+        const high = paginate(rows, 99, 2);
+        eq(high.page, 3);
+        eq(high.total, 5);
+        eq(high.totalPages, 3);
+        eq(high.rows.length, 1);
+        eq(paginate(rows, 0, 2).page, 1);
+      });
+
+      await check('filterRows is case-insensitive and trims', function () {
+        const rows = [row('Ada Lovelace'), row('Grace Hopper')];
+        eq(filterRows(rows, 'HOP').length, 1);
+        eq(filterRows(rows, '   ').length, 2);
+      });
+
+      await check('sortRows sorts numbers and keeps blanks last', function () {
+        const column = { index: 0, type: 'number' };
+        const rows = [row('10'), row('2'), row(''), row('n/a')];
+        eq(firstColumn(sortRows(rows, column, 'asc')), ['2', '10', '', 'n/a']);
+        eq(firstColumn(sortRows(rows, column, 'desc')), ['10', '2', '', 'n/a']);
+      });
+
+      await check('sortRows is stable for equal values', function () {
+        const rows = [row('b', '1'), row('a', '2'), row('a', '3')];
+        const sorted = sortRows(rows, { index: 0, type: 'string' }, 'asc');
+        eq(sorted.map(function (item) { return item[1].text; }), ['2', '3', '1']);
+      });
+
+      await check('sortRows compares strings numerically', function () {
+        const rows = [row('Item 10'), row('Item 2')];
+        eq(firstColumn(sortRows(rows, { index: 0, type: 'string' }, 'asc')), ['Item 2', 'Item 10']);
+      });
+
+      await check('sortRows sorts dates', function () {
+        const rows = [row('2020-01-02'), row('2019-12-31')];
+        eq(firstColumn(sortRows(rows, { index: 0, type: 'date' }, 'asc')), ['2019-12-31', '2020-01-02']);
+      });
+
+      await check('createCSV escapes, adds a BOM and CRLF rows', function () {
+        const csv = createCSV(['Name', 'Note'], [['Ada, "A"', 'line1\nline2']]);
+        assert(csv.indexOf('\uFEFF') === 0, 'missing BOM');
+        assert(csv.indexOf('"Ada, ""A"""') !== -1, 'quotes not escaped');
+        assert(csv.indexOf('"line1\nline2"') !== -1, 'newline not preserved');
+        eq(csv.split('\r\n').length, 2);
+      });
+
+      await check('createJSON maps keys to row values', function () {
+        const data = JSON.parse(createJSON([{ key: 'name' }, { key: 'score' }], [['Ada', '98']]));
+        eq(data, [{ name: 'Ada', score: '98' }]);
+      });
+
+      await check('sanitizeFilename removes unsafe characters', function () {
+        eq(sanitizeFilename('team/roster:2026*?'), 'team-roster-2026');
+        eq(sanitizeFilename('   '), 'export');
+      });
+
+      await check('normalizeCell extracts text and preserves HTML', function () {
+        const normalized = normalizeCell('<strong>Ada</strong> Lovelace');
+        eq(normalized.text, 'Ada Lovelace');
+        eq(normalized.html, '<strong>Ada</strong> Lovelace');
+        eq(normalizeCell({ text: 'a & b' }).html, 'a &amp; b');
+      });
+
+      await check('uniqueKeys de-duplicates export keys', function () {
+        eq(uniqueKeys([{ field: 'a' }, { field: 'a' }, { label: 'b', index: 2 }]), ['a', 'a_2', 'b']);
+      });
+
+      /* ----------------------------------------------------------- lifecycle */
+
+      await check('initializes controls, rows, info and sortable headers', async function () {
+        const opened = await openGrid(HEAD, BODY);
+        try {
+          const table = opened.table;
+          const wrapper = opened.wrapper;
+          assert(wrapper && wrapper.classList.contains('v-dg-wrapper'), 'wrapper missing');
+          assert(table.classList.contains('v-dg-table'), 'table class missing');
+          eq(table.querySelectorAll('tbody tr').length, 2);
+          assert(wrapper.querySelector('.v-dg-info').textContent.indexOf('Showing 1 to 2 of 3 entries') !== -1, 'info text');
+          eq(wrapper.querySelector('.v-dg-pagination button[aria-current="page"]').textContent, '1');
+          const th = table.tHead.rows[0].cells[0];
+          assert(th.classList.contains('v-dg-sortable'), 'sortable class');
+          eq(th.getAttribute('aria-sort'), 'none');
+          eq(th.getAttribute('tabindex'), '0');
+          eq(th.getAttribute('scope'), 'col');
+          const buttons = wrapper.querySelectorAll('button');
+          Array.prototype.forEach.call(buttons, function (button) {
+            eq(button.type, 'button');
+          });
+        } finally {
+          dispose(opened.table, opened.grid);
+        }
+      });
+
+      await check('search resets the page and filters rows', async function () {
+        const opened = await openGrid(HEAD, BODY);
+        try {
+          await opened.grid.goToPage(2);
+          await opened.grid.search('ada');
+          eq(opened.grid.getState().page, 1);
+          eq(opened.grid.getState().query, 'ada');
+          eq(opened.table.querySelectorAll('tbody tr').length, 1);
+          eq(opened.table.tBodies[0].rows[0].cells[0].textContent, 'Ada');
+        } finally {
+          dispose(opened.table, opened.grid);
+        }
+      });
+
+      await check('header click sorts, then reverses', async function () {
+        const opened = await openGrid(HEAD, BODY);
+        try {
+          const th = opened.table.tHead.rows[0].cells[0];
+          th.click();
+          await opened.grid.ready;
+          eq(opened.table.tBodies[0].rows[0].cells[0].textContent, 'Ada');
+          eq(th.getAttribute('aria-sort'), 'ascending');
+          th.click();
+          await opened.grid.ready;
+          eq(opened.table.tBodies[0].rows[0].cells[0].textContent, 'Grace');
+          eq(th.getAttribute('aria-sort'), 'descending');
+        } finally {
+          dispose(opened.table, opened.grid);
+        }
+      });
+
+      await check('keyboard Enter sorts a header', async function () {
+        const opened = await openGrid(HEAD, BODY);
+        try {
+          const th = opened.table.tHead.rows[0].cells[0];
+          th.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          await opened.grid.ready;
+          eq(th.getAttribute('aria-sort'), 'ascending');
+          eq(opened.table.tBodies[0].rows[0].cells[0].textContent, 'Ada');
+        } finally {
+          dispose(opened.table, opened.grid);
+        }
+      });
+
+      await check('pagination buttons move between pages', async function () {
+        const opened = await openGrid(HEAD, BODY);
+        try {
+          const pageTwo = opened.wrapper.querySelector('.v-dg-pagination button[data-page="2"]');
+          pageTwo.click();
+          await opened.grid.ready;
+          eq(opened.grid.getState().page, 2);
+          eq(opened.table.querySelectorAll('tbody tr').length, 1);
+          eq(opened.wrapper.querySelector('.v-dg-pagination button[aria-current="page"]').textContent, '2');
+        } finally {
+          dispose(opened.table, opened.grid);
+        }
+      });
+
+      await check('column visibility updates header, cells and exports', async function () {
+        const opened = await openGrid(HEAD, BODY);
+        try {
+          const checkbox = opened.wrapper.querySelector('input[data-index="1"]');
+          checkbox.checked = false;
+          checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+          assert(opened.table.tHead.rows[0].cells[1].classList.contains('v-dg-hidden'), 'header not hidden');
+          assert(opened.table.tBodies[0].rows[0].cells[1].classList.contains('v-dg-hidden'), 'cell not hidden');
+          const data = await opened.grid.getExportData();
+          eq(data.headers.map(function (header) { return header.field; }), ['name', 'score']);
+          eq(data.rows.length, 3);
+
+          const boxes = opened.wrapper.querySelectorAll('input[data-vdg="column"]');
+          Array.prototype.forEach.call(boxes, function (box) {
+            if (box.checked) {
+              box.checked = false;
+              box.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          });
+          let rejected = false;
+          try {
+            await opened.grid.getExportData();
+          } catch (error) {
+            rejected = true;
+          }
+          assert(rejected, 'export should fail with no visible columns');
+        } finally {
+          dispose(opened.table, opened.grid);
+        }
+      });
+
+      await check('destroy restores the original markup and re-init works', async function () {
+        const table = makeTable('<th data-field="name" data-sortable="true">Name</th>', '<tr><td>Ada</td></tr>');
+        const original = table.tBodies[0].innerHTML;
+        const grid = new VanillaDataGrid(table, { rowsPerPage: 5 });
+        await grid.ready;
+        assert(table.closest('.v-dg-wrapper'), 'wrapper missing before destroy');
+        grid.destroy();
+        assert(grid.destroyed, 'destroyed flag');
+        eq(table.closest('.v-dg-wrapper'), null);
+        assert(!table.classList.contains('v-dg-table'), 'table class not removed');
+        eq(table.tBodies[0].innerHTML, original);
+        assert(!table.tHead.rows[0].cells[0].hasAttribute('aria-sort'), 'aria-sort left behind');
+        assert(!table.tHead.rows[0].cells[0].hasAttribute('tabindex'), 'tabindex left behind');
+
+        const again = new VanillaDataGrid(table, { rowsPerPage: 5 });
+        await again.ready;
+        assert(table.closest('.v-dg-wrapper'), 'wrapper missing after re-init');
+        dispose(table, again);
+      });
+
+      await check('two grids keep independent state', async function () {
+        const first = await openGrid(HEAD, BODY);
+        const second = await openGrid(HEAD, BODY);
+        try {
+          await first.grid.search('ada');
+          eq(first.grid.getState().query, 'ada');
+          eq(second.grid.getState().query, '');
+          eq(second.table.querySelectorAll('tbody tr').length, 2);
+          first.grid.destroy();
+          await second.grid.reload();
+          eq(second.table.querySelectorAll('tbody tr').length, 2);
+        } finally {
+          dispose(first.table, first.grid);
+          dispose(second.table, second.grid);
+        }
+      });
+
+      await check('generated buttons do not submit a surrounding form', async function () {
+        const form = document.createElement('form');
+        const table = document.createElement('table');
+        table.innerHTML = '<thead><tr>' + HEAD + '</tr></thead><tbody>' + BODY + '</tbody>';
+        form.appendChild(table);
+        fixtures.appendChild(form);
+        let submitted = false;
+        form.addEventListener('submit', function (event) {
+          submitted = true;
+          event.preventDefault();
+        });
+        const grid = new VanillaDataGrid(table, { rowsPerPage: 2 });
+        await grid.ready;
+        try {
+          table.tHead.rows[0].cells[0].click();
+          await grid.ready;
+          grid.wrapper.querySelector('.v-dg-pagination button[data-page="2"]').click();
+          await grid.ready;
+          assert(!submitted, 'form was submitted');
+        } finally {
+          grid.destroy();
+          form.remove();
+        }
+      });
+
+      await check('invalid tables fail before mutating the DOM', async function () {
+        const table = makeTable('', '<tr><td>no header</td></tr>');
+        let message = '';
+        try {
+          new VanillaDataGrid(table);
+        } catch (error) {
+          message = error.message;
+        }
+        assert(/No columns/.test(message), 'missing no-columns error');
+        eq(table.closest('.v-dg-wrapper'), null);
+        table.remove();
+
+        const opened = await openGrid(HEAD, BODY);
+        let duplicate = '';
+        try {
+          new VanillaDataGrid(opened.table);
+        } catch (error) {
+          duplicate = error.message;
+        }
+        assert(/already initialized/.test(duplicate), 'missing duplicate-init error');
+        dispose(opened.table, opened.grid);
+      });
+
+      await check('setData replaces local rows', async function () {
+        const opened = await openGrid(HEAD, BODY);
+        try {
+          await opened.grid.setData([['Zed', 'Engineer', '100']]);
+          eq(opened.grid.getState().rows.length, 1);
+          eq(opened.grid.getState().rows[0][0].text, 'Zed');
+          eq(opened.table.querySelectorAll('tbody tr').length, 1);
+        } finally {
+          dispose(opened.table, opened.grid);
+        }
+      });
+
+      /* -------------------------------------------------------------- remote */
+
+      await check('remote errors render a retry button that recovers', async function () {
+        const table = makeTable('<th data-field="name">Name</th>', '');
+        let attempts = 0;
+        const grid = new VanillaDataGrid(table, {
+          rowsPerPage: 2,
+          ajax: async function () {
+            attempts += 1;
+            if (attempts === 1) throw new Error('boom');
+            return { rows: [['Ada']], total: 1 };
+          }
+        });
+        await grid.ready;
+        try {
+          eq(grid.getState().status, 'error');
+          assert(grid.wrapper.textContent.indexOf('boom') !== -1, 'error detail missing');
+          const retry = grid.wrapper.querySelector('[data-vdg="retry"]');
+          assert(retry, 'retry button missing');
+          retry.click();
+          await grid.ready;
+          eq(grid.getState().status, 'ready');
+          eq(table.tBodies[0].rows[0].cells[0].textContent, 'Ada');
+
+          let rejected = false;
+          try {
+            await grid.setData([['no']]);
+          } catch (error) {
+            rejected = true;
+          }
+          assert(rejected, 'setData should reject for remote grids');
+        } finally {
+          dispose(table, grid);
+        }
+      });
+
+      await check('stale remote responses are ignored', async function () {
+        const table = makeTable('<th data-field="name">Name</th>', '');
+        const grid = new VanillaDataGrid(table, {
+          rowsPerPage: 5,
+          ajax: function (params) {
+            return new Promise(function (resolve, reject) {
+              const timer = setTimeout(function () {
+                resolve({ rows: [[params.query || 'all']], total: 1 });
+              }, params.query === 'slow' ? 60 : 0);
+              params.signal.addEventListener('abort', function () {
+                clearTimeout(timer);
+                const error = new Error('aborted');
+                error.name = 'AbortError';
+                reject(error);
+              }, { once: true });
+            });
+          }
+        });
+        await grid.ready;
+        try {
+          const slow = grid.search('slow');
+          const fast = grid.search('fast');
+          await fast;
+          await slow;
+          await tick(80);
+          eq(grid.getState().query, 'fast');
+          eq(grid.getState().rows[0][0].text, 'fast');
+        } finally {
+          dispose(table, grid);
+        }
+      });
+
+      await check('remote export defaults to the current page', async function () {
+        const table = makeTable('<th data-field="name">Name</th>', '');
+        const all = [['a'], ['b'], ['c'], ['d'], ['e']];
+        const grid = new VanillaDataGrid(table, {
+          rowsPerPage: 2,
+          ajax: async function (params) {
+            const start = (params.page - 1) * params.size;
+            return { rows: all.slice(start, start + params.size), total: all.length };
+          }
+        });
+        await grid.ready;
+        try {
+          const data = await grid.getExportData();
+          eq(data.rows.length, 2);
+          eq(data.rows, [['a'], ['b']]);
+        } finally {
+          dispose(table, grid);
+        }
+      });
+
+      await check('remote exportScope "all" fetches every page', async function () {
+        const table = makeTable('<th data-field="name">Name</th>', '');
+        const all = [['a'], ['b'], ['c'], ['d'], ['e']];
+        const grid = new VanillaDataGrid(table, {
+          rowsPerPage: 2,
+          exportScope: 'all',
+          ajax: async function (params) {
+            const start = (params.page - 1) * params.size;
+            return { rows: all.slice(start, start + params.size), total: all.length };
+          }
+        });
+        await grid.ready;
+        try {
+          const data = await grid.getExportData();
+          eq(data.rows.length, 5);
+          eq(data.rows[4], ['e']);
+        } finally {
+          dispose(table, grid);
+        }
+      });
+
+      await check('remote export stops at maxExportRows', async function () {
+        const table = makeTable('<th data-field="name">Name</th>', '');
+        const all = [['a'], ['b'], ['c'], ['d'], ['e']];
+        const grid = new VanillaDataGrid(table, {
+          rowsPerPage: 2,
+          exportScope: 'all',
+          maxExportRows: 3,
+          ajax: async function (params) {
+            const start = (params.page - 1) * params.size;
+            return { rows: all.slice(start, start + params.size), total: all.length };
+          }
+        });
+        await grid.ready;
+        try {
+          let message = '';
+          try {
+            await grid.getExportData();
+          } catch (error) {
+            message = error.message;
+          }
+          assert(/limited to 3 rows/.test(message), 'cap not enforced');
+        } finally {
+          dispose(table, grid);
+        }
+      });
+
+      summary.textContent = passed + ' passed, ' + failed + ' failed';
+      document.documentElement.setAttribute('data-tests', failed ? 'failed' : 'passed');
+      window.__VDG_TESTS__ = { passed: passed, failed: failed };
+    })();
+  </script>
+</body>
+</html>
