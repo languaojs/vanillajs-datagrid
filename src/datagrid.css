@@ -21,6 +21,10 @@
 /* Top controls */
 .v-dg-controls { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .v-dg-left-controls, .v-dg-right-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.v-dg-search-controls { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
+.v-dg-search { flex: 1 1 240px; min-width: 0; }
+.v-dg-page-size-label { font-size: 13px; white-space: nowrap; }
+.v-dg-page-size { flex: 0 0 76px; }
 
 .v-dg-input {
   padding: 6px 10px;
@@ -92,6 +96,21 @@
 .v-dg-bottom { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 .v-dg-info { color: var(--vdg-muted); font-size: 13px; }
 .v-dg-info.v-dg-info-error { color: #b91c1c; }
+.v-dg-loading-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 7px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: v-dg-spin 0.7s linear infinite;
+}
+@keyframes v-dg-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .v-dg-loading-spinner { animation: none; }
+}
 .v-dg-pagination { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .v-dg-pagination button {
   padding: 5px 10px;

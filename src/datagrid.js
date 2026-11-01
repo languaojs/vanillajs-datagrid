@@ -4,6 +4,7 @@
   const DEFAULT_LABELS = {
     search: 'Search table...',
     searchLabel: 'Search table',
+    rowsPerPageLabel: 'Rows per page',
     columns: 'Columns',
     prev: 'Prev',
     next: 'Next',
@@ -48,34 +49,69 @@
     return (template.content.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
+  function readAttributes(element) {
+    const attributes = {};
+    Array.prototype.forEach.call(element.attributes, function (attribute) {
+      attributes[attribute.name] = attribute.value;
+    });
+    return attributes;
+  }
+
+  function copyAttributes(attributes) {
+    const copy = {};
+    if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return copy;
+    Object.keys(attributes).forEach(function (name) {
+      const value = attributes[name];
+      if (value != null && value !== false) copy[name] = value === true ? '' : String(value);
+    });
+    return copy;
+  }
+
+  function applyAttributes(element, attributes) {
+    Object.keys(attributes || {}).forEach(function (name) {
+      element.setAttribute(name, attributes[name]);
+    });
+  }
+
   function normalizeCell(raw) {
-    if (raw == null) return { html: '', text: '', className: '' };
+    if (raw == null) return { html: '', text: '', className: '', attributes: {}, tagName: 'TD' };
     if (typeof raw === 'string' || typeof raw === 'number') {
       const html = String(raw);
-      return { html: html, text: textFromHtml(html), className: '' };
+      return { html: html, text: textFromHtml(html), className: '', attributes: {}, tagName: 'TD' };
     }
     if (typeof raw === 'object') {
-      const className = raw.className == null ? '' : String(raw.className);
+      const attributes = copyAttributes(raw.attributes);
+      const className = raw.className == null
+        ? (attributes.class || '')
+        : String(raw.className);
+      if (raw.className != null) attributes.class = className;
+      const tagName = String(raw.tagName || raw.tag || 'TD').toUpperCase();
+      if (tagName !== 'TH' && tagName !== 'TD') {
+        throw new Error('Cell tagName must be "TH" or "TD".');
+      }
       if (raw.html != null) {
         const html = String(raw.html);
         const text = raw.text != null ? String(raw.text).trim() : textFromHtml(html);
-        return { html: html, text: text, className: className };
+        return { html: html, text: text, className: className, attributes: attributes, tagName: tagName };
       }
       if (raw.text != null) {
         const text = String(raw.text).trim();
-        return { html: escapeHtml(text), text: text, className: className };
+        return { html: escapeHtml(text), text: text, className: className, attributes: attributes, tagName: tagName };
       }
-      return { html: '', text: '', className: className };
+      return { html: '', text: '', className: className, attributes: attributes, tagName: tagName };
     }
     const text = String(raw);
-    return { html: escapeHtml(text), text: text, className: '' };
+    return { html: escapeHtml(text), text: text, className: '', attributes: {}, tagName: 'TD' };
   }
 
   function normalizeRow(raw) {
-    if (!Array.isArray(raw)) {
-      throw new Error('Each data row must be an array of cells.');
+    const cells = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.cells) ? raw.cells : null);
+    if (!cells) {
+      throw new Error('Each data row must be an array of cells or an object with a "cells" array.');
     }
-    return raw.map(normalizeCell);
+    const row = cells.map(normalizeCell);
+    if (!Array.isArray(raw)) row.attributes = copyAttributes(raw.attributes);
+    return row;
   }
 
   function readRows(tbody) {
@@ -83,10 +119,15 @@
     const rows = [];
     Array.prototype.forEach.call(tbody.rows, function (tr) {
       const cells = Array.prototype.slice.call(tr.cells);
-      if (cells.length === 1 && cells[0].colSpan > 1) return;
-      rows.push(cells.map(function (cell) {
-        return normalizeCell({ html: cell.innerHTML.trim(), className: cell.className });
-      }));
+      const row = cells.map(function (cell) {
+        return normalizeCell({
+          html: cell.innerHTML,
+          attributes: readAttributes(cell),
+          tagName: cell.tagName
+        });
+      });
+      row.attributes = readAttributes(tr);
+      rows.push(row);
     });
     return rows;
   }
@@ -300,7 +341,8 @@
       ajaxUrl: options.ajaxUrl || null,
       ajax: typeof options.ajax === 'function' ? options.ajax : null,
       fetchOptions: options.fetchOptions && typeof options.fetchOptions === 'object' ? options.fetchOptions : {},
-      rowsPerPage: toPositiveInt(options.rowsPerPage, toPositiveInt(options.pageSize, 5)),
+      rowsPerPage: toPositiveInt(options.rowsPerPage, toPositiveInt(options.pageSize, 10)),
+      showRowsPerPage: options.showRowsPerPage !== false,
       export: exports,
       exportFilename: options.exportFilename || 'export',
       exportScope: options.exportScope === 'all' ? 'all' : 'page',
@@ -461,6 +503,7 @@
       this.fetchController = null;
       this.exportController = null;
       this.originalHeaderState = [];
+      this.originalTableAttributes = readAttributes(table);
 
       const existingBody = table.tBodies[0] || null;
       this.originalTbodyHTML = existingBody ? existingBody.innerHTML : '';
@@ -476,9 +519,7 @@
       this.originalHeaderState = this.columns.map(function (column) {
         return {
           element: column.element,
-          ariaSort: column.element.getAttribute('aria-sort'),
-          tabindex: column.element.getAttribute('tabindex'),
-          scope: column.element.getAttribute('scope')
+          attributes: readAttributes(column.element)
         };
       });
 
@@ -552,9 +593,16 @@
       wrapper.innerHTML =
         '<div class="v-dg-controls">' +
           '<div class="v-dg-left-controls">' +
-            '<label class="v-dg-sr-only" for="' + id + '-search">' + escapeHtml(labels.searchLabel) + '</label>' +
-            '<input id="' + id + '-search" class="v-dg-input v-dg-search" type="search" placeholder="' +
-              escapeHtml(labels.search) + '" autocomplete="off" spellcheck="false">' +
+            '<div class="v-dg-search-controls">' +
+              '<label class="v-dg-sr-only" for="' + id + '-search">' + escapeHtml(labels.searchLabel) + '</label>' +
+              '<input id="' + id + '-search" class="v-dg-input v-dg-search" type="search" placeholder="' +
+                escapeHtml(labels.search) + '" autocomplete="off" spellcheck="false">' +
+              (this.options.showRowsPerPage
+                ? '<label class="v-dg-page-size-label" for="' + id + '-page-size">' +
+                    escapeHtml(labels.rowsPerPageLabel) + '</label>' +
+                  '<input id="' + id + '-page-size" class="v-dg-input v-dg-page-size" type="number" min="1" step="1">'
+                : '') +
+            '</div>' +
           '</div>' +
           '<div class="v-dg-right-controls"></div>' +
         '</div>' +
@@ -569,6 +617,8 @@
       wrapper.insertBefore(this.table, bottom);
 
       this.searchInput = wrapper.querySelector('.v-dg-search');
+      this.pageSizeInput = wrapper.querySelector('.v-dg-page-size');
+      if (this.pageSizeInput) this.pageSizeInput.value = String(this.state.size);
       this.infoDiv = wrapper.querySelector('.v-dg-info');
       this.paginationDiv = wrapper.querySelector('.v-dg-pagination');
       this.rightControls = wrapper.querySelector('.v-dg-right-controls');
@@ -643,6 +693,20 @@
           this.#applySearchNow();
         }
       }, { signal });
+
+      if (this.pageSizeInput) {
+        this.pageSizeInput.addEventListener('change', () => {
+          const size = this.pageSizeInput.valueAsNumber;
+          if (!this.pageSizeInput.validity.valid || !Number.isSafeInteger(size) || size < 1) {
+            this.pageSizeInput.reportValidity();
+            return;
+          }
+          if (size === this.state.size) return;
+          this.state.size = size;
+          this.state.page = 1;
+          this.ready = this.#load();
+        }, { signal });
+      }
 
       this.wrapper.addEventListener('click', (event) => {
         const target = event.target.closest('[data-vdg]');
@@ -878,14 +942,22 @@
       const fragment = document.createDocumentFragment();
       this.state.rows.forEach((row) => {
         const tr = document.createElement('tr');
-        this.columns.forEach((column) => {
-          const cell = row[column.index] || { html: '', text: '', className: '' };
-          const td = document.createElement('td');
-          if (cell.className) td.className = cell.className;
-          if (this.state.hidden.has(column.index)) td.classList.add('v-dg-hidden');
-          td.innerHTML = cell.html;
-          tr.appendChild(td);
+        applyAttributes(tr, row.attributes);
+        const hasSpanningCell = row.some(function (cell) {
+          const attributes = cell.attributes || {};
+          return Number(attributes.colspan || attributes.rowspan) > 1;
         });
+        const cellCount = hasSpanningCell ? row.length : Math.max(row.length, this.columns.length);
+        for (let index = 0; index < cellCount; index += 1) {
+          const column = this.columns[index];
+          const cell = row[index] || { html: '', text: '', className: '', attributes: {}, tagName: 'TD' };
+          const cellElement = document.createElement(cell.tagName || 'TD');
+          applyAttributes(cellElement, cell.attributes);
+          if (cell.className) cellElement.className = cell.className;
+          if (column && this.state.hidden.has(column.index)) cellElement.classList.add('v-dg-hidden');
+          cellElement.innerHTML = cell.html;
+          tr.appendChild(cellElement);
+        }
         fragment.appendChild(tr);
       });
       this.tbody.appendChild(fragment);
@@ -894,7 +966,10 @@
     #renderInfo() {
       this.infoDiv.classList.remove('v-dg-info-error');
       if (this.state.status === 'loading') {
-        this.infoDiv.textContent = this.labels.loading;
+        const spinner = document.createElement('span');
+        spinner.className = 'v-dg-loading-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        this.infoDiv.replaceChildren(spinner, document.createTextNode(this.labels.loading));
         return;
       }
       if (this.state.status === 'error') {
@@ -976,7 +1051,11 @@
         sort: this.state.sort ? { index: this.state.sort.index, dir: this.state.sort.dir } : null,
         hidden: Array.from(this.state.hidden).sort(function (a, b) { return a - b; }),
         rows: this.state.rows.map(function (row) {
-          return row.map(function (cell) { return Object.assign({}, cell); });
+          const copy = row.map(function (cell) {
+            return Object.assign({}, cell, { attributes: Object.assign({}, cell.attributes) });
+          });
+          copy.attributes = Object.assign({}, row.attributes);
+          return copy;
         }),
         total: this.state.total,
         status: this.state.status,
@@ -1158,17 +1237,16 @@
       this.originalHeaderState.forEach(function (entry) {
         const th = entry.element;
         if (!th) return;
-        th.classList.remove('v-dg-sortable', 'v-dg-hidden');
-        if (entry.ariaSort == null) th.removeAttribute('aria-sort');
-        else th.setAttribute('aria-sort', entry.ariaSort);
-        if (entry.tabindex == null) th.removeAttribute('tabindex');
-        else th.setAttribute('tabindex', entry.tabindex);
-        if (entry.scope == null) th.removeAttribute('scope');
-        else th.setAttribute('scope', entry.scope);
+        Array.prototype.slice.call(th.attributes).forEach(function (attribute) {
+          th.removeAttribute(attribute.name);
+        });
+        applyAttributes(th, entry.attributes);
       });
 
-      this.table.classList.remove('v-dg-table');
-      this.table.removeAttribute('aria-busy');
+      Array.prototype.slice.call(this.table.attributes).forEach((attribute) => {
+        this.table.removeAttribute(attribute.name);
+      });
+      applyAttributes(this.table, this.originalTableAttributes);
 
       if (this.createdTbody) {
         if (this.tbody && this.tbody.parentNode) this.tbody.remove();
@@ -1183,6 +1261,7 @@
 
       this.wrapper = null;
       this.searchInput = null;
+      this.pageSizeInput = null;
       this.infoDiv = null;
       this.paginationDiv = null;
       this.rightControls = null;

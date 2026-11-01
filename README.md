@@ -10,10 +10,10 @@ A zero-dependency, single-file JavaScript data grid. Fully responsive, lightweig
 
 - **Zero dependencies** — pure vanilla JS (IIFE classic script, no build systems, bundlers, or package managers required).
 - **Dual data modes** — works entirely in-memory with existing HTML `<table>` rows, or loads dynamically via Ajax.
-- **Rich interactions** — case-insensitive search, typed sorting (`string`, `number`, `date` with blanks-last semantics), and windowed pagination.
+- **Rich interactions** — case-insensitive search, adjustable rows per page, typed sorting (`string`, `number`, `date` with blanks-last semantics), and windowed pagination.
 - **Column controls** — toggle column visibility on the fly via an accessible dropdown menu.
 - **Exports & Printing** — export to CSV (with UTF-8 BOM and CRLF), JSON, or open a clean print view.
-- **Accessible** — keyboard-sortable headers (`aria-sort`), `aria-current` pagination, live info region (`aria-live`), and focus management.
+- **Accessible** — keyboard-sortable headers (`aria-sort`), `aria-current` pagination, an animated loading indicator with a live info region (`aria-live`), and focus management.
 - **Safe & Robust** — supports request cancellation via `AbortController`, page clamping, double-init guards, and complete `destroy()` cleanup.
 
 ---
@@ -97,10 +97,22 @@ The grid expects backend endpoints to return JSON matching this contract:
   "total": 57,
   "rows": [
     ["Ada Lovelace", "Engineer", "98", "2021-03-14", "Active"],
-    [{ "html": "<strong>Grace</strong> Hopper", "text": "Grace Hopper" }, "Admiral", "92", "2019-11-08", "Active"]
+    {
+      "attributes": { "data-user-id": "2", "class": "featured" },
+      "cells": [
+        {
+          "html": "<strong data-kind=\"first-name\">Grace</strong> Hopper",
+          "text": "Grace Hopper",
+          "attributes": { "data-column": "name", "title": "Grace Hopper" }
+        },
+        "Admiral", "92", "2019-11-08", "Active"
+      ]
+    }
   ]
 }
 ```
+
+For local HTML tables, nested cell markup and its attributes are retained, as are `<tr>` and `<td>`/`<th>` attributes. The table sections and headers remain in place with their attributes and markup intact. Ajax rows may be arrays of cells or objects with a `cells` array and row `attributes`; each cell may provide `html`, `text`, `attributes`, and `tagName` (`"td"` or `"th"`). The same row and cell metadata is available in `grid.getState().rows`. Markup and attributes are rendered as supplied, so only use trusted HTML and attributes.
 
 ### PHP Example (`/api/users.php`)
 ```php
@@ -147,6 +159,7 @@ app.get('/api/users', async (req, res) => {
 ```js
 const grid = new VanillaDataGrid('#table-id', {
   rowsPerPage: 5,             // Default page size
+  showRowsPerPage: true,      // Show the rows-per-page input beside search
   ajaxUrl: null,              // Endpoint URL string (or null for local mode)
   ajax: null,                 // Optional custom function: async ({ page, size, query, sort, order, signal }) => ({ rows, total })
   fetchOptions: {},           // Custom fetch options (headers, credentials, etc.)
@@ -159,6 +172,8 @@ const grid = new VanillaDataGrid('#table-id', {
   columns: null               // Optional column configuration overrides
 });
 ```
+
+The rows-per-page input appears beside search by default. Set `showRowsPerPage: false` to hide it while keeping the configured page size. `rowsPerPage` sets the initial value; when omitted, it defaults to 10.
 
 ---
 
