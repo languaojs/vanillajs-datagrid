@@ -12,7 +12,7 @@ A zero-dependency, single-file JavaScript data grid. Fully responsive, lightweig
 - **Dual data modes** — works entirely in-memory with existing HTML `<table>` rows, or loads dynamically via Ajax.
 - **Rich interactions** — case-insensitive search, adjustable rows per page, typed sorting (`string`, `number`, `date` with blanks-last semantics), and windowed pagination.
 - **Column controls** — toggle column visibility on the fly via an accessible dropdown menu.
-- **Exports & Printing** — export to CSV (with UTF-8 BOM and CRLF), JSON, or open a clean print view.
+- **Exports & Printing** — export to CSV (with UTF-8 BOM and CRLF), Excel (`.xlsx`, generated in-file with no dependencies), JSON, or open a clean print view.
 - **Accessible** — keyboard-sortable headers (`aria-sort`), `aria-current` pagination, an animated loading indicator with a live info region (`aria-live`), and focus management.
 - **Safe & Robust** — supports request cancellation via `AbortController`, page clamping, double-init guards, and complete `destroy()` cleanup.
 
@@ -41,6 +41,8 @@ Or use the versioned files from the unpkg CDN:
 ```
 
 `datagrid.js` is a classic browser script, not a CommonJS or ES module. It assigns `globalThis.VanillaDataGrid` (along with a deprecated `VanillaDataTable` alias). Do not load it with `type="module"`; use a regular `<script>` tag.
+
+To try a local table without a server, open this repo's `index.html` directly in a browser. It exercises search, sorting, pagination, column toggling, and all exports against static HTML rows.
 
 ---
 
@@ -163,7 +165,7 @@ const grid = new VanillaDataGrid('#table-id', {
   ajaxUrl: null,              // Endpoint URL string (or null for local mode)
   ajax: null,                 // Optional custom function: async ({ page, size, query, sort, order, signal }) => ({ rows, total })
   fetchOptions: {},           // Custom fetch options (headers, credentials, etc.)
-  export: true,               // Enable exports: true (all formats), false, or ['csv', 'json', 'print']
+  export: true,               // Enable exports: true (all formats), false, or ['csv', 'excel', 'json', 'print']
   exportFilename: 'export',   // Base download filename
   exportScope: 'page',        // Remote export scope: 'page' (default) or 'all' (walks pages)
   maxExportRows: 10000,       // Safety limit for exportScope: 'all'
@@ -187,6 +189,7 @@ The rows-per-page input appears beside search by default. Set `showRowsPerPage: 
 - `grid.setData(rows)` — Replaces local rows (local mode only).
 - `grid.getExportData()` — Returns `{ headers, rows }` for export.
 - `grid.exportCSV()` — Triggers CSV download.
+- `grid.exportExcel()` — Triggers `.xlsx` download (all cells are written as text, preserving IDs and leading zeros).
 - `grid.exportJSON()` — Triggers JSON download.
 - `grid.printTable()` — Opens print window.
 - `grid.getState()` — Returns a deep clone of the current internal state.

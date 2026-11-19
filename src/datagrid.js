@@ -17,11 +17,12 @@
     exportError: 'Export failed.',
     exportEmpty: 'There is nothing to export.',
     csv: 'CSV',
+    excel: 'Excel',
     json: 'JSON',
     print: 'Print'
   };
 
-  const EXPORT_FORMATS = ['csv', 'json', 'print'];
+  const EXPORT_FORMATS = ['csv', 'excel', 'json', 'print'];
   const initializedTables = new WeakSet();
   let uid = 0;
   let template = null;
@@ -250,6 +251,129 @@
       return object;
     });
     return JSON.stringify(objects, null, 2);
+  }
+
+  function escapeXml(value) {
+    return String(value == null ? '' : value)
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[ch];
+      });
+  }
+
+  function columnName(index) {
+    let name = '';
+    do {
+      name = String.fromCharCode(65 + (index % 26)) + name;
+      index = Math.floor(index / 26) - 1;
+    } while (index >= 0);
+    return name;
+  }
+
+  function crc32(bytes) {
+    let crc = -1;
+    for (let i = 0; i < bytes.length; i += 1) {
+      crc ^= bytes[i];
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+      }
+    }
+    return (crc ^ -1) >>> 0;
+  }
+
+  // XLSX is a ZIP of XML parts; stored entries avoid a deflate dependency.
+  function zipStore(files) {
+    const encoder = new TextEncoder();
+    const now = new Date();
+    const time = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+    const date = ((Math.max(1980, now.getFullYear()) - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    const entries = files.map(function (file) {
+      const data = encoder.encode(file.content);
+      return { name: encoder.encode(file.name), data: data, crc: crc32(data), offset: 0 };
+    });
+    const localSize = entries.reduce(function (sum, entry) { return sum + 30 + entry.name.length + entry.data.length; }, 0);
+    const centralSize = entries.reduce(function (sum, entry) { return sum + 46 + entry.name.length; }, 0);
+    const bytes = new Uint8Array(localSize + centralSize + 22);
+    const view = new DataView(bytes.buffer);
+    let offset = 0;
+    entries.forEach(function (entry) {
+      entry.offset = offset;
+      view.setUint32(offset, 0x04034b50, true);
+      view.setUint16(offset + 4, 20, true);
+      view.setUint16(offset + 6, 0x0800, true);
+      view.setUint16(offset + 10, time, true);
+      view.setUint16(offset + 12, date, true);
+      view.setUint32(offset + 14, entry.crc, true);
+      view.setUint32(offset + 18, entry.data.length, true);
+      view.setUint32(offset + 22, entry.data.length, true);
+      view.setUint16(offset + 26, entry.name.length, true);
+      offset += 30;
+      bytes.set(entry.name, offset);
+      offset += entry.name.length;
+      bytes.set(entry.data, offset);
+      offset += entry.data.length;
+    });
+    const centralStart = offset;
+    entries.forEach(function (entry) {
+      view.setUint32(offset, 0x02014b50, true);
+      view.setUint16(offset + 4, 20, true);
+      view.setUint16(offset + 6, 20, true);
+      view.setUint16(offset + 8, 0x0800, true);
+      view.setUint16(offset + 12, time, true);
+      view.setUint16(offset + 14, date, true);
+      view.setUint32(offset + 16, entry.crc, true);
+      view.setUint32(offset + 20, entry.data.length, true);
+      view.setUint32(offset + 24, entry.data.length, true);
+      view.setUint16(offset + 28, entry.name.length, true);
+      view.setUint32(offset + 42, entry.offset, true);
+      offset += 46;
+      bytes.set(entry.name, offset);
+      offset += entry.name.length;
+    });
+    view.setUint32(offset, 0x06054b50, true);
+    view.setUint16(offset + 8, entries.length, true);
+    view.setUint16(offset + 10, entries.length, true);
+    view.setUint32(offset + 12, offset - centralStart, true);
+    view.setUint32(offset + 16, centralStart, true);
+    return bytes;
+  }
+
+  function createXLSX(headers, rows) {
+    const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const cell = function (ref, value) {
+      return '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + escapeXml(value) + '</t></is></c>';
+    };
+    const rowXML = function (values, number) {
+      return '<row r="' + number + '">' + values.map(function (value, index) {
+        return cell(columnName(index) + number, value);
+      }).join('') + '</row>';
+    };
+    const sheetData = [rowXML(headers.map(function (header) { return header.label; }), 1)]
+      .concat(rows.map(function (row, index) { return rowXML(row, index + 2); }))
+      .join('');
+    return zipStore([
+      { name: '[Content_Types].xml', content: head +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '</Types>' },
+      { name: '_rels/.rels', content: head +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+        '</Relationships>' },
+      { name: 'xl/workbook.xml', content: head +
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+      { name: 'xl/_rels/workbook.xml.rels', content: head +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+        '</Relationships>' },
+      { name: 'xl/worksheets/sheet1.xml', content: head +
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<sheetData>' + sheetData + '</sheetData></worksheet>' }
+    ]);
   }
 
   function uniqueKeys(columns) {
@@ -1192,6 +1316,12 @@
             base + '.csv',
             'text/csv;charset=utf-8;'
           );
+        } else if (format === 'excel') {
+          downloadFile(
+            createXLSX(data.headers, data.rows),
+            base + '.xlsx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          );
         } else if (format === 'json') {
           downloadFile(
             createJSON(data.headers.map(function (header) { return { key: header.field }; }), data.rows),
@@ -1213,6 +1343,11 @@
     exportCSV() {
       this.#assertAlive();
       return this.#export('csv');
+    }
+
+    exportExcel() {
+      this.#assertAlive();
+      return this.#export('excel');
     }
 
     exportJSON() {
@@ -1287,6 +1422,7 @@
     pageWindow: pageWindow,
     sanitizeFilename: sanitizeFilename,
     createCSV: createCSV,
+    createXLSX: createXLSX,
     createJSON: createJSON,
     uniqueKeys: uniqueKeys
   });

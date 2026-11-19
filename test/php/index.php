@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vanilla DataGrid Lab</title>
-    <link rel="stylesheet" href="./datagrid.css">
+    <link rel="stylesheet" href="../../src/datagrid.css">
     <style>
         :root {
             color-scheme: light;
@@ -158,7 +158,7 @@
         </section>
     </main>
 
-    <script src="./datagrid.js"></script>
+    <script src="../../src/datagrid.js"></script>
     <script>
         new VanillaDataGrid('#static-users');
         new VanillaDataGrid('#remote-users', {
